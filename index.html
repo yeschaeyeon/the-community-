@@ -685,6 +685,7 @@ function doAttack(aId,tId,guess,sure){
   if(!a.alive){out.void=true;return out;}
   if(!t.alive){out.void=true;return out;}
   G.stats.attacks+=aId===0?1:0;
+  G.atked=G.atked||{};G.atked[aId]=true;
   const ok=sure||(guess&&codeStr(t.code)===codeStr(guessToCode(guess)));
   if(ok){
     if(G.exempt.includes(tId)){
@@ -709,6 +710,12 @@ function npcAttackPlans(){
   for(const n of shuffle(npcAlive())){
     const others=aliveList().filter(x=>x.id!==n.id);
     if(!others.length)continue;
+    // 원작 규칙: 6일차까지 한 번도 공격하지 않으면 500만 지출 → 비용이 싼 초반에 일부러 실패하는 공격을 해 둔다.
+    G.atked=G.atked||{};
+    if(!G.D.cgRound&&G.day>=2&&G.day<=6&&!G.atked[n.id]&&n.id!==G.impure){
+      const dp={2:.6,3:.55,4:.65,5:.8,6:1}[G.day];
+      if(chance(dp)){plans.push({a:n.id,t:pickOne(others).id,p:0,dummy:true});continue;}
+    }
     if(n.id===G.impure&&G.day>=3&&!G.D.cgRound&&!G.D.impAtk&&chance(truce?.2:.3)){G.D.impAtk=true;
       const tgt=weighted(others,o=>o.money+60);
       plans.push({a:n.id,t:tgt.id,sure:true});continue;
@@ -914,7 +921,19 @@ function ranking(){
 }
 
 /* ---------- 하루 넘기기 ---------- */
+const NOATK_COST=500;
+function noAttackCost(){
+  // 6일차가 끝날 때까지 공격을 한 번도 시도하지 않은 주민은 기회비용 500만이 빠진다.
+  G.atked=G.atked||{};const lines=[];
+  aliveList().forEach(r=>{
+    if(G.atked[r.id])return;
+    const c=Math.min(r.money,NOATK_COST);r.money-=c;G.pub+=c;
+    lines.push(r.nick+' '+fm(c));
+  });
+  if(lines.length)logAdd('공격 미시도 기회비용(500만) 정산: '+lines.join(', ')+' — 공금으로 귀속.','warn');
+}
 function nextDay(){
+  if(G.day===6)noAttackCost();
   G.day++;G.step=0;G.D={};
   if(G.day>9){G.done=true;return;}
   G.mult=multFor(G.day);
@@ -1934,6 +1953,7 @@ STEPS.attack={
     else top+=`<div class="card"><small>오늘 확인한 코드</small><p><b>${esc(byId(G.D.checked).nick)}</b> — ${codeLabel(byId(G.D.checked).code)}</p></div>`;
   }
   if(G.D.newImpure&&!G.D.newImpureShown){top+=`<div class="card"><p class="err">불순분자가 퇴소했습니다. 당신이 새 불순분자로 지목됐습니다.</p></div>`;G.D.newImpureShown=true;}
+  if(G.day>=2&&G.day<=6&&!(G.atked&&G.atked[0]))top+=`<div class="card"><small>원작 규칙</small><p class="hint">6일차까지 공격을 한 번도 시도하지 않으면 기회비용 ${fm(NOATK_COST)}이 빠집니다. 공격이 실패하면 (일차−1)×100만 벌금이므로 초반일수록 쌉니다. 오늘 ${fm(attackPenalty())}.</p></div>`;
   if(G.D.atkRes){
     return `${head('attack','사상검증 결과')}${top}<div class="card">${G.D.atkRes.map(l=>`<div class="lg"><span>${esc(l)}</span></div>`).join('')}</div>${nextBtn()}`;
   }
