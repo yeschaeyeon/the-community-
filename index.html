@@ -277,7 +277,7 @@ function newGame(nick){
     notes:'',
     reveals:{},    // id -> {axis:dir}  내가 아는 정보
     exempt:[],     // 탈락 면제권 보유자 id
-    inv:{hint:0,retry:0,info:0},
+    inv:{hint:0,retry:0,info:0,exempt:0},
     pledge:null,   // 종신 리더 공약
     over:false,    // 내가 퇴소
     imm:[],
@@ -390,7 +390,7 @@ const SHOP=[
  {id:'meal',name:'기본 식사',unit:4,per:true,desc:'모든 주민 하루 세 끼. 사지 않으면 불만이 쌓인다.',must:true},
  {id:'feast',name:'특식',unit:3,per:true,desc:'인당 추가 비용. 리더에 대한 호감이 오른다.'},
  {id:'hint',name:'힌트권',unit:80,desc:'문제 풀이 때 한 단계에서 힌트를 볼 수 있다. 그 단계 상금은 절반이 된다.'},
- {id:'exempt',name:'탈락 면제권',unit:300,desc:'받은 사람은 사상검증 공격 한 번을 막아낸다(퇴소 면제).'},
+ {id:'exempt',name:'탈락 면제권',unit:300,desc:'공금으로 보관한다. 사상검증으로 탈락이 확정된 사람 한 명에게 자동으로 쓰여 탈락을 면제한다.'},
  {id:'info',name:'정보권',unit:150,desc:'리더가 주민 한 명의 한 축 방향과 강도를 확인한다.'}];
 
 const STAGE_BASE={2:[100,300,400,500,700]};
@@ -530,7 +530,7 @@ function buyItem(id,arg){
   if(id==='meal'){G.D.meal=true;}
   if(id==='feast'){G.D.feast=true;npcAlive().forEach(n=>adjFav(n.id,G.leader,3));}
   if(id==='hint'){G.inv.hint++;}
-  if(id==='exempt'){const h=arg==null?G.leader:arg;if(!G.exempt.includes(h))G.exempt.push(h);else {G.pub+=c;return false;}}
+  if(id==='exempt'){G.inv.exempt=(G.inv.exempt||0)+1;}
   if(id==='info'){
     const t=byId(arg.id);
     if(G.leader===0){revealAxis(t.id,arg.k,true,false);}
@@ -548,8 +548,7 @@ function autoShop(){
       cs.buy.forEach(id=>{
         if(id==='meal'&&G.D.meal)return;if(id==='feast'&&G.D.feast)return;
         if(!canBuy(id)||id==='info')return;
-        if(id==='exempt'){const c=aliveList().map(r=>r.id).filter(x=>!G.exempt.includes(x));if(c.length)buyItem('exempt',pickOne(c));}
-        else buyItem(id);
+        buyItem(id);
       });
       if(!G.D.meal&&canBuy('meal'))buyItem('meal');
       return;
@@ -559,8 +558,7 @@ function autoShop(){
   if(G.leader!=null&&G.pub>mealCost()*3&&chance(.35)&&canBuy('feast'))buyItem('feast');
   if(G.day>=2&&G.day<=4&&G.inv.hint<1&&G.pub>itemCost('hint')+mealCost()+150&&chance(.6))buyItem('hint');
   if(G.day>=2&&G.day<=6&&G.pub>itemCost('exempt')+mealCost()+200&&chance(.4)){
-    const who=chance(.55)?G.leader:pickOne(aliveList().map(r=>r.id));
-    if(who!=null&&!G.exempt.includes(who))buyItem('exempt',who);
+    if((G.inv.exempt||0)<2)buyItem('exempt');
   }
 }
 function finishShop(){
@@ -688,8 +686,10 @@ function doAttack(aId,tId,guess,sure){
   G.atked=G.atked||{};G.atked[aId]=true;
   const ok=sure||(guess&&codeStr(t.code)===codeStr(guessToCode(guess)));
   if(ok){
-    if(G.exempt.includes(tId)){
-      G.exempt=G.exempt.filter(x=>x!==tId);out.def=true;
+    // 탈락이 확정된 사람에게 면제권을 쓴다(공금 보관분 우선, 예전 저장분 호환)
+    if((G.inv.exempt||0)>0||G.exempt.includes(tId)){
+      if(G.exempt.includes(tId))G.exempt=G.exempt.filter(x=>x!==tId);else G.inv.exempt--;
+      out.def=true;
       logAdd(t.nick+'은(는) 탈락 면제권으로 퇴소를 면했다.','warn');
     }else{
       out.ok=true;a.money+=t.money;out.gain=t.money;t.money=0;
@@ -1300,7 +1300,7 @@ SC.final={
 const MTG_KIND={
  levy:{title:'공금 징수 회의',ag:()=>`리더 ${leaderName()}가 오늘 공금을 몇 % 걷을지 정하기 전에 주민들이 모여 의견을 모은다. 현재 공금 ${G.pub}만, 하루 식사 비용은 약 ${mealCost()}만(물가 ×${G.mult}), 주민 ${aliveList().length}명. 징수율은 최소 10%이고 개인 자금의 일정 비율을 걷는다.`,
   cs:'"consensus":{"rate":10~50 사이의 10 단위 정수}',desc:'회의에서 합의한 징수율을 리더가 따를지는 리더 성격에 달려 있다.'},
- shop:{title:'공금 사용 회의',ag:()=>`리더 ${leaderName()}가 공금으로 무엇을 살지 정하기 전에 주민들이 모여 의견을 모은다. 현재 공금 ${G.pub}만. 살 수 있는 것: meal(기본 식사, 필수), feast(특식), hint(힌트권), exempt(탈락 면제권, 사상검증 공격 한 번 방어), info(정보권). 식사 비용 ${mealCost()}만.`,
+ shop:{title:'공금 사용 회의',ag:()=>`리더 ${leaderName()}가 공금으로 무엇을 살지 정하기 전에 주민들이 모여 의견을 모은다. 현재 공금 ${G.pub}만. 살 수 있는 것: meal(기본 식사, 필수), feast(특식), hint(힌트권), exempt(탈락 면제권, 공금으로 보관하다가 사상검증으로 탈락이 확정된 사람 한 명에게 사후에 써서 탈락을 면제), info(정보권). 식사 비용 ${mealCost()}만.`,
   cs:'"consensus":{"buy":["meal","hint"]}  // meal,feast,hint,exempt,info 중에서',desc:''},
  prize:{title:'상금 배분 회의',ag:()=>`오늘 문제 풀이로 번 상금 ${G.D.prize||0}만을 리더 ${leaderName()}가 나누기 전에 주민들이 모여 의견을 모은다. 풀이조: ${(G.D.solvers||[]).map(i=>byId(i).nick).join(', ')}. 균등 분배(equal), 풀이조 우대(solver), 리더 재량(free) 중 무엇이 좋은가.`,
   cs:'"consensus":{"mode":"equal 또는 solver 또는 free","alloc":{"닉네임":만원(10단위),...,"공금":만원}}  // alloc은 회의에서 사람별 금액까지 구체적으로 정했을 때만(합계=상금 전체). 아니면 alloc 생략',desc:'배분은 정해진 틀이 아니라 회의에서 사람별로 구체적으로 정할 수 있다. 구체 안이 합의되면 alloc에 닉네임별 금액(만원, 10 단위)과 공금 적립분을 적고 합계가 상금과 정확히 같아야 한다.'},
@@ -1494,7 +1494,7 @@ function residentsTab(){
   return `<h2>주민</h2><div class="card me-card"><div class="eyebrow">나 · ${esc(m.nick)}</div>
     <div class="mycode">${AX.map(a=>`<div><small>${a.name}</small><b>${a.d[m.code[a.k][0]]}${m.code[a.k][1]}</b></div>`).join('')}</div>
     <p class="hint">합산 ${codeScore(m.code)}점 · ${codeStr(m.code)}${imp?' · <b>당신은 불순분자입니다</b>':''}</p>
-    ${G.exempt.includes(0)?'<p class="hint">탈락 면제권 보유</p>':''}</div>
+    ${G.exempt.includes(0)?'<p class="hint">탈락 면제권 보유</p>':''}${(G.inv.exempt||0)?`<p class="hint">공금 면제권 ${G.inv.exempt}장 — 탈락이 확정된 사람에게 자동 사용</p>`:''}</div>
     <p class="hint">숫자는 모두에게 공개된 사상 합산 점수입니다. 기자 기사·불순분자 확인·추리 게임으로 알게 된 정보는 칩으로 표시돼요.</p>${rows}`;
 }
 function logTab(){
@@ -1670,7 +1670,7 @@ ACT['levy-go']=()=>{needLeader();const L=byId(G.leader);let rate;
 /* 5. 공금 사용 (상점) */
 function shopView(){
   needLeader();const L=byId(G.leader);
-  const stat=`<div class="chips"><span class="chip">공금 ${fm(G.pub)}</span><span class="chip">물가 ×${G.mult}</span><span class="chip">힌트권 ${G.inv.hint}</span>${G.exempt.length?`<span class="chip">면제권 ${G.exempt.map(i=>byId(i).nick).join(', ')}</span>`:''}</div>`;
+  const stat=`<div class="chips"><span class="chip">공금 ${fm(G.pub)}</span><span class="chip">물가 ×${G.mult}</span><span class="chip">힌트권 ${G.inv.hint}</span>${(G.inv.exempt||0)+G.exempt.length?`<span class="chip">면제권 ${(G.inv.exempt||0)+G.exempt.length}장</span>`:''}</div>`;
   if(!L.me){
     if(G.D.shopDone){
       const today=G.logs.filter(l=>l.d===G.day&&l.k==='money'&&/구입|식사/.test(l.t)).map(l=>`<div class="lg"><span>${esc(l.t)}</span></div>`).join('');
@@ -1682,7 +1682,7 @@ function shopView(){
   const row=(it)=>{
     const c=itemCost(it.id);const done=(it.id==='meal'&&G.D.meal)||(it.id==='feast'&&G.D.feast);
     let ctl='';
-    if(it.id==='exempt')ctl=`<select id="ex_who">${aliveList().filter(r=>!G.exempt.includes(r.id)).map(r=>`<option value="${r.id}">${esc(r.nick)}</option>`).join('')}</select>`;
+    if(it.id==='exempt')ctl=`<p class="hint">보유 ${G.inv.exempt||0}장 — 탈락이 확정된 사람에게 자동 사용</p>`;
     if(it.id==='info')ctl=`<select id="in_who">${aliveList().filter(r=>!r.me).map(r=>`<option value="${r.id}">${esc(r.nick)}</option>`).join('')}</select><select id="in_ax">${AX.map(a=>`<option value="${a.k}">${a.name}</option>`).join('')}</select>`;
     return `<div class="shoprow"><div><b>${esc(it.name)}</b>${it.must?' <em>필수</em>':''}<p class="hint">${esc(it.desc)}</p>${ctl?`<div class="row">${ctl}</div>`:''}</div>
       <div class="buy"><span>${fm(c)}</span>${done?'<small>구매함</small>':btn('shop-buy','구매',G.pub>=c?'':'dis',`data-a="${it.id}" ${G.pub>=c?'':'disabled'}`)}</div></div>`;
@@ -1695,7 +1695,6 @@ STEPS.shop={view:shopView,auto:()=>{needLeader();autoShop();finishShop();G.D.sho
 ACT['shop-npc']=()=>{autoShop();finishShop();G.D.shopDone=true;save();render();};
 ACT['shop-buy']=(el)=>{
   const id=el.dataset.a;let arg;
-  if(id==='exempt')arg=+val('ex_who');
   if(id==='info')arg={id:+val('in_who'),k:val('in_ax')};
   if(!buyItem(id,arg))alert_('구매할 수 없어요.');
   save();render();
