@@ -1337,9 +1337,12 @@ SC.meeting={
       if(c.alloc&&typeof c.alloc==='object'){
         const al={pub:0};let sum=0;const tot=G.D.prize||0;
         Object.entries(c.alloc).forEach(([nm,v])=>{const x=Math.max(0,Math.floor((+v||0)/10)*10);
-          if(nm==='공금'||nm==='pub')return;const id=nickId(nm);if(id!=null&&byId(id).alive){al[id]=x;sum+=x;}});
+          if(nm==='공금'||nm==='pub')return;const id=nickId(nm);
+          if(id==null||!byId(id).alive)throw new Error('alloc에 알 수 없거나 퇴소한 닉네임이 있어요: '+nm+'. Claude에게 다시 요청해 주세요.');
+          al[id]=x;sum+=x;});
+        if(sum>tot)throw new Error('alloc 합계('+sum+'만)가 상금('+tot+'만)보다 커요. Claude에게 다시 요청해 주세요.');
         // 상금이 10 단위가 아니어도(예: 2625) 남는 금액은 전부 공금으로 적립
-        if(sum<=tot){al.pub=tot-sum;o.alloc=al;o.mode=o.mode||'free';}
+        al.pub=tot-sum;o.alloc=al;o.mode=o.mode||'free';
       }
       if(o.mode||o.alloc)cons=o;
     }
@@ -1787,7 +1790,9 @@ STEPS.prize={
   if(!total)return `${head('prize','상금 배분')}<div class="card"><p class="lead">오늘은 상금이 없습니다.</p></div>${nextBtn()}`;
   if(G.D.alloc){
     const mine=G.D.alloc[0]||0;const eq=total/aliveList().length;
-    return `${head('prize','상금 배분')}<div class="card"><p class="lead">상금 ${money(total)} 중 내 몫은 ${money(mine)}.</p>
+    const cpz=consOf('prize');const fl=G.D.follow&&G.D.follow.prize;
+    const note=cpz?`<p class="hint">${cpz.alloc?'회의에서 사람별 금액을 정했습니다.':'회의 결론: '+({equal:'균등 분배',solver:'풀이조 우대',free:'리더 재량'}[cpz.mode]||'')+'.'} ${fl===true?'리더가 회의 결과를 따랐습니다.':fl===false?'리더가 회의 결과를 따르지 않았습니다.':''}</p>`:'';
+    return `${head('prize','상금 배분')}<div class="card"><p class="lead">상금 ${money(total)} 중 내 몫은 ${money(mine)}.</p>${note}
      <p class="hint">균등 분배 기준 ${fm(eq)}${mine<eq?' — 평균보다 적게 받았습니다.':mine>eq?' — 평균보다 많이 받았습니다.':''} 공금 적립 ${fm(G.D.alloc.pub||0)}</p>
      ${isMeImpure()?`<details><summary>불순분자 열람: 전체 배분</summary>${aliveList().map(r=>`<div class="srow"><span>${esc(r.nick)}</span><span>${fm(G.D.alloc[r.id]||0)}</span></div>`).join('')}</details>`:''}</div>${nextBtn()}`;
   }
