@@ -413,15 +413,15 @@ const LINES={
 /* ===== 게임 진행 규칙 (계산) ===== */
 const PLANS={
  1:['meet','leader','startfund','mt_levy','levy','mt_shop','shop','mt_night','favor','debate','night'],
- 2:['leader','mt_shop','shop','pick','work','mt_prize','prize','mt_levy','levy','mt_eve','attack','mt_night','favor','debate','night'],
- 3:['leader','reporter','mt_shop','shop','pick','work','mt_prize','prize','mt_levy','levy','mt_eve','attack','mt_night','favor','debate','night'],
- 4:['leader','mt_shop','shop','pick','work','mt_prize','prize','mt_levy','levy','mt_eve','attack','mt_night','favor','debate','night'],
- 5:['immig','lifeleader','settle','mt_shop','shop','mt_levy','levy','mt_eve','attack','mt_night','favor','debate','night'],
- 6:['mt_shop','shop','codegame','mt_levy','levy','mt_eve','attack','mt_night','favor','debate','night'],
- 7:['mt_shop','shop','trial','mt_levy','levy','mt_eve','favor','debate','night'],
- 8:['mt_shop','shop','speech','disguise','mt_levy','levy','mt_eve','favor','debate','night'],
+ 2:['leader','mt_shop','shop','pick','work','mt_prize','prize','mt_levy','levy','mt_eve','mt_rep','attack','mt_night','favor','debate','night'],
+ 3:['leader','reporter','mt_shop','shop','pick','work','mt_prize','prize','mt_levy','levy','mt_eve','mt_rep','attack','mt_night','favor','debate','night'],
+ 4:['leader','mt_shop','shop','pick','work','mt_prize','prize','mt_levy','levy','mt_eve','mt_rep','attack','mt_night','favor','debate','night'],
+ 5:['immig','lifeleader','settle','mt_shop','shop','mt_levy','levy','mt_eve','mt_rep','attack','mt_night','favor','debate','night'],
+ 6:['mt_shop','shop','codegame','mt_levy','levy','mt_eve','mt_rep','attack','mt_night','favor','debate','night'],
+ 7:['mt_shop','shop','trial','mt_levy','levy','mt_eve','mt_rep','favor','debate','night'],
+ 8:['mt_shop','shop','speech','disguise','mt_levy','levy','mt_eve','mt_rep','favor','debate','night'],
  9:['final','ending']};
-const STEPNAME={meet:'첫 만남',leader:'리더 선발',startfund:'시작 자금',levy:'공금 징수',shop:'공금 사용',pick:'문제 풀 사람 정하기',work:'문제 풀이 / 휴식',prize:'상금 배분',reporter:'기자 선발',immig:'이주민 입장',lifeleader:'종신 리더 선거',settle:'정착금',codegame:'코드 추리 게임',attack:'사상검증 (18~24시)',favor:'호감도 투표',debate:'익명 채팅',night:'하루 정리',mt_levy:'주민 회의 · 공금 징수',mt_shop:'주민 회의 · 공금 사용',mt_prize:'주민 회의 · 상금 배분',mt_eve:'저녁 회의',mt_night:'밤 회의',trial:'국민 참여 재판',speech:'인생 스피치',disguise:'위장 접속',final:'마지막 딜레마',ending:'결과'};
+const STEPNAME={meet:'첫 만남',leader:'리더 선발',startfund:'시작 자금',levy:'공금 징수',shop:'공금 사용',pick:'문제 풀 사람 정하기',work:'문제 풀이 / 휴식',prize:'상금 배분',reporter:'기자 선발',immig:'이주민 입장',lifeleader:'종신 리더 선거',settle:'정착금',codegame:'코드 추리 게임',attack:'사상검증 (18~24시)',favor:'호감도 투표',debate:'익명 채팅',night:'하루 정리',mt_levy:'주민 회의 · 공금 징수',mt_shop:'주민 회의 · 공금 사용',mt_prize:'주민 회의 · 상금 배분',mt_eve:'저녁 회의',mt_rep:'주민 회의 · 기자 질문',mt_night:'밤 회의',trial:'국민 참여 재판',speech:'인생 스피치',disguise:'위장 접속',final:'마지막 딜레마',ending:'결과'};
 function curKey(){return PLANS[G.day][G.step];}
 function curPlan(){return PLANS[G.day];}
 
@@ -684,6 +684,7 @@ function doAttack(aId,tId,guess,sure){
   if(!t.alive){out.void=true;return out;}
   G.stats.attacks+=aId===0?1:0;
   G.atked=G.atked||{};G.atked[aId]=true;
+  G.D.attacked=G.D.attacked||[];if(!G.D.attacked.includes(tId))G.D.attacked.push(tId);
   const ok=sure||(guess&&codeStr(t.code)===codeStr(guessToCode(guess)));
   if(ok){
     // 탈락이 확정된 사람에게 면제권을 쓴다(공금 보관분 우선, 예전 저장분 호환)
@@ -714,7 +715,9 @@ function npcAttackPlans(){
     G.atked=G.atked||{};
     if(!G.D.cgRound&&G.day>=2&&G.day<=6&&!G.atked[n.id]&&n.id!==G.impure){
       const dp={2:.6,3:.55,4:.65,5:.8,6:1}[G.day];
-      if(chance(dp)){plans.push({a:n.id,t:pickOne(others).id,p:0,dummy:true});continue;}
+      if(chance(dp)){
+        const pid=G.pairs&&G.pairs[n.id];const partner=pid!=null&&byId(pid).alive?pid:null;
+        plans.push({a:n.id,t:partner!=null?partner:pickOne(others).id,p:0,dummy:true});continue;}
     }
     if(n.id===G.impure&&G.day>=3&&!G.D.cgRound&&!G.D.impAtk&&chance(truce?.2:.3)){G.D.impAtk=true;
       const tgt=weighted(others,o=>o.money+60);
@@ -737,6 +740,7 @@ function npcAttackPlans(){
   return plans;
 }
 function runAttacks(myAttack){
+  npcImpureCheck();
   const plans=npcAttackPlans();
   const list=plans.map(p=>({...p,sure:p.sure||chance(p.p)})).map(p=>({a:p.a,t:p.t,sure:p.sure,guess:null}));
   if(myAttack)list.push({a:0,t:myAttack.t,sure:false,guess:myAttack.guess});
@@ -760,7 +764,10 @@ function summarizeAttacks(results){
     else if(mine.def)lines.push('내 공격은 상대의 탈락 면제권에 막혔다.');
     else lines.push('내 공격 실패 — '+byId(mine.t).nick+'. 페널티 '+fm(mine.pen)+' 공금으로 환수');
   }
-  onMe.forEach(r=>{ if(!r.ok) lines.push('누군가 나를 공격했지만 실패했다.'); });
+  onMe.forEach(r=>{
+    if(r.def)lines.push('누군가 나를 공격했고, 탈락 면제권이 쓰여 퇴소를 면했다. (공격자는 알 수 없다)');
+    else if(!r.ok)lines.push('누군가 나를 공격했지만 실패했다. (공격자는 알 수 없다)');
+  });
   return lines;
 }
 
@@ -798,6 +805,18 @@ function reporterArticle(targetId,k){
   const msg='[기사] '+t.nick+'의 '+ax.name+' 성향은 「'+ax.d[v[0]]+'」 쪽입니다.';
   logAdd(msg,'news');G.D.article=msg;return msg;
 }
+const REP_BAD=/불순|누구|정체|전체|코드|단계|강도|레벨|자금|돈|퇴소|죽/;
+function reporterAsk(list){
+  // 합의로 정한 질문들을 기자가 한꺼번에 묻는다(개수 제한 없음). 한 번에 한 축의 방향만 답한다.
+  const out=[];
+  list.forEach(q=>{const t=byId(q.id);if(!t||!t.alive)return;
+    const k=q.k;const v=t.code[k];const ax=AX.find(a=>a.k===k);
+    revealAxis(q.id,k,false,true);
+    const msg='[기사] '+t.nick+'의 '+ax.name+' 성향은 「'+ax.d[v[0]]+'」 쪽입니다.';
+    logAdd(msg,'news');out.push(msg);});
+  if(out.length){G.D.article=out[out.length-1];G.D.articles=(G.D.articles||[]).concat(out);}
+  return out;
+}
 function npcArticle(){
   const cand=aliveList().filter(r=>r.id!==G.reporter);
   const t=pickOne(cand);const k=pickOne(AX).k;
@@ -806,9 +825,19 @@ function npcArticle(){
 
 /* ---------- 불순분자 ---------- */
 function impureCheck(targetId){
-  const t=byId(targetId);G.reveals[targetId]={};
-  AX.forEach(a=>{G.reveals[targetId][a.k]=[t.code[a.k][0],t.code[a.k][1]];});
+  const t=byId(targetId);
+  // 열람 자체는 모두에게 공지된다(열람자는 비공개). 본인이 불순분자일 때만 코드를 안다.
   G.D.checked=targetId;
+  logAdd('[공지] 오늘 누군가의 전체 코드가 열람되었습니다. (열람자와 대상은 비공개)','news');
+  G.D.checkNotice='오늘 누군가의 전체 코드가 열람되었습니다. 열람자와 대상은 비공개입니다.';
+  if(G.impure===0){G.reveals[targetId]={};AX.forEach(a=>{G.reveals[targetId][a.k]=[t.code[a.k][0],t.code[a.k][1]];});}
+}
+function npcImpureCheck(){
+  // 불순분자가 NPC여도 매일 한 명의 코드를 열람하고, 그 사실은 모두에게 공지된다.
+  if(G.impure==null||G.impure===0||G.D.checked!=null)return;
+  const imp=byId(G.impure);if(!imp||!imp.alive)return;
+  const c=aliveList().filter(r=>r.id!==G.impure);if(!c.length)return;
+  impureCheck(weighted(c,r=>r.money+80).id);
 }
 
 /* ---------- 익명 토론 ---------- */
@@ -1305,7 +1334,9 @@ const MTG_KIND={
  prize:{title:'상금 배분 회의',ag:()=>`오늘 문제 풀이로 번 상금 ${G.D.prize||0}만을 리더 ${leaderName()}가 나누기 전에 주민들이 모여 의견을 모은다. 풀이조: ${(G.D.solvers||[]).map(i=>byId(i).nick).join(', ')}. 균등 분배(equal), 풀이조 우대(solver), 리더 재량(free) 중 무엇이 좋은가.`,
   cs:'"consensus":{"mode":"equal 또는 solver 또는 free","alloc":{"닉네임":만원(10단위),...,"공금":만원}}  // alloc은 회의에서 사람별 금액까지 구체적으로 정했을 때만(합계=상금 전체). 아니면 alloc 생략',desc:'배분은 정해진 틀이 아니라 회의에서 사람별로 구체적으로 정할 수 있다. 구체 안이 합의되면 alloc에 닉네임별 금액(만원, 10 단위)과 공금 적립분을 적고 합계가 상금과 정확히 같아야 한다.'},
  eve:{title:'저녁 회의',ag:()=>`저녁 시간, 주민 전원이 모여 자유롭게 회의한다. 오늘 있었던 일(상금, 세율, 리더의 결정)을 두고 의견이 오가고, 사상검증 공격이 가능한 시간대(18~24시)를 앞두고 서로를 떠본다. 누가 수상한지, 누구를 믿을 수 있는지 이야기가 오간다.`,
-  cs:'"consensus":{"truce":true 또는 false}  // 오늘 밤 서로 사상검증 공격을 자제하기로 합의했으면 true, 합의가 없으면 null',desc:'주민은 각 분야 최고의 합리적 엘리트다. 코드의 방향과 단계를 4축 모두 맞혀야 하는 사상검증은 쉽지 않고, 틀리면 벌금이라 근거 없이 쏘지 않는다. 회의에서 휴전이 합의되면 배신하려는 마음이 없는 한 지킨다.'},
+  cs:'"consensus":{"truce":true,"pairs":[["닉네임","닉네임"],...]}  // 오늘 밤 서로 사상검증 공격을 자제하기로 합의했으면 truce:true. 짝 공격(서로 일부러 실패하는 1:1 매칭)이 정해졌다면 pairs에 짝을 모두 적는다. 합의가 없으면 null',desc:'주민은 각 분야 최고의 합리적 엘리트다. 코드의 방향과 단계를 4축 모두 맞혀야 하는 사상검증은 쉽지 않고, 틀리면 벌금이라 근거 없이 쏘지 않는다. 회의에서 휴전이 합의되면 배신하려는 마음이 없는 한 지킨다.'},
+ rep:{title:'기자 질문 회의',ag:()=>`기자 ${G.reporter!=null?byId(G.reporter).nick:'(없음)'}가 오늘 취재할 질문을 주민들이 합의로 정한다. 기자는 매일 제한 없이 여러 개를 물을 수 있고, 그동안 묻지 못한 질문도 한꺼번에 포함할 수 있다. 질문 하나는 한 주민의 한 축(정치·젠더·계급·개방) 방향이다. 「불순분자는 누구입니까」, 전체 코드, 단계(강도), 개인 자금처럼 터무니없는 질문은 할 수 없다. 이미 공개된 정보: ${Object.keys(G.pk||{}).length?'일부 있음':'없음'}.`,
+  cs:'"consensus":{"ask":[{"who":"닉네임","axis":"정치 또는 젠더 또는 계급 또는 개방"}]}  // 합의된 질문만. 합의가 없으면 null',desc:'질문은 회의에서 합의돼야 한다. 합의된 질문을 전부 ask에 넣어라(개수 제한 없음). 터무니없는 질문은 넣지 마라.'},
  night:{title:'밤 회의',ag:()=>`사상검증이 끝난 밤, 주민들이 다시 모인다. 오늘 일어난 일을 두고 의심과 추측이 오간다. 퇴소자나 실패한 공격이 있었다면 그 이야기가 중심이 된다.`,
   cs:'"consensus":null',desc:''}
 };
@@ -1323,7 +1354,7 @@ SC.meeting={
  build:inp=>{
   const k=mtgKind();const m=MTG_KIND[k];const prev=(G.D.mtgLog&&G.D.mtgLog[k]||[]).slice(-8).map(l=>`${l.who}: ${l.text}`).join('\n');
   const want=k==='levy'?`내가 바라는 징수율 ${inp.rate}%`:k==='prize'?`내가 바라는 배분 ${inp.mode}`:k==='shop'?`내가 사고 싶은 것 ${inp.want}`:'';
-  const todayLogs=G.logs.filter(l=>l.d===G.day&&l.k!=='day').slice(-6).map(l=>l.t).join(' / ');
+  const todayLogs=G.logs.filter(l=>l.d===G.day&&l.k!=='day').slice(-6).map(l=>l.t).join(' / ')+(k==='night'&&G.D.attacked&&G.D.attacked.length?' / 오늘 공격을 받은 주민(각자 본인이 공격받은 사실은 알지만 공격자는 모른다): '+G.D.attacked.map(i=>byId(i).nick).join(', '):'')+(G.D.checkNotice?' / [공지] '+G.D.checkNotice:'');
   return{body:`주민 회의. ${m.ag()}\n${m.desc}\n오늘까지의 일: ${todayLogs||'특별한 일 없음'}\n${prev?'이어지는 회의 — 직전 대화:\n'+prev+'\n':''}플레이어 "${G.nick}"의 발언: "${inp.say||'(조용히 듣고 있다)'}" ${want}\n주민들은 각자 이해관계(SECRET의 traits)와 성향대로 논쟁하고, 주장이 갈리면 쉽게 합의하지 않는다. 합의가 안 되면 consensus는 가장 많은 지지를 얻은 안으로 정리하거나 null.`,
    schema:`{"log":[{"who":"닉네임","text":"대사"}],${m.cs},"favor":{"닉네임":정수}}\n- log: 18~26줄. 서로 반박하고 편을 먹는 실제 회의처럼. 플레이어 발언에 대한 반응 3~5개 포함. 플레이어 대사는 쓰지 마.\n- consensus: 회의의 결론(위 형식). 합의가 안 되면 null.\n- favor: 주민들이 플레이어에게 느낀 호감 변화(-4~+6).`};
  },
@@ -1346,14 +1377,27 @@ SC.meeting={
       }
       if(o.mode||o.alloc)cons=o;
     }
-    if(k==='eve'&&c.truce)cons={truce:true};
+    if(k==='eve'&&c.truce){
+      cons={truce:true};
+      if(Array.isArray(c.pairs)){const pr=[];c.pairs.forEach(p=>{const a=nickId(p[0]),b=nickId(p[1]);if(a!=null&&b!=null&&a!==b)pr.push([a,b]);});if(pr.length)cons.pairs=pr;}
+    }
+    if(k==='rep'&&Array.isArray(c.ask)){
+      const ask=[];const names={정치:'p',젠더:'g',계급:'c',개방:'o',p:'p',g:'g',c:'c',o:'o'};
+      c.ask.forEach(q=>{
+        const key=names[String(q.axis||'').trim()];const id=nickId(q.who);
+        if(!key||id==null||!byId(id).alive||id===G.reporter&&false)throw new Error('허용되지 않는 질문이 있어요: '+JSON.stringify(q)+'. 주민 한 명의 한 축(정치·젠더·계급·개방) 방향만 물을 수 있어요. Claude에게 다시 요청해 주세요.');
+        if(REP_BAD.test(String(q.axis||'')))throw new Error('터무니없는 질문이에요: '+q.axis);
+        ask.push({id,k:key});
+      });
+      if(ask.length)cons={ask};
+    }
     if(k==='shop'){const b=(c.buy||[]).filter(x=>['meal','feast','hint','exempt','info'].includes(x));if(b.length)cons={buy:[...new Set(['meal'].concat(b))]};}
   }
   return{log,consensus:cons,favor:favorMap(j.favor,-5,7)};
  },
  auto:inp=>{
   const k=mtgKind();let cons=null;
-  if(k==='levy')cons={rate:20};if(k==='prize')cons={mode:'equal'};if(k==='eve')cons={truce:true};if(k==='shop')cons={buy:['meal','hint']};
+  if(k==='levy')cons={rate:20};if(k==='prize')cons={mode:'equal'};if(k==='eve')cons={truce:true};if(k==='rep'&&G.reporter!=null){const o=aliveList().filter(r=>r.id!==G.reporter);cons={ask:shuffle(o).slice(0,2).map(r=>({id:r.id,k:pickOne(AX).k}))};}if(k==='shop')cons={buy:['meal','hint']};
   const fv={};npcAlive().forEach(r=>fv[r.id]=ri(0,3));
   return{log:autoLog('chat',10),consensus:cons,favor:fv};
  },
@@ -1362,7 +1406,9 @@ SC.meeting={
   G.D.mtgLog=G.D.mtgLog||{};G.D.mtgLog[k]=(G.D.mtgLog[k]||[]).concat(res.log);
   G.D.cons=G.D.cons||{};if(res.consensus)G.D.cons[k]=res.consensus;
   G.D.mtgCount=(G.D.mtgCount||0)+1;
-  if(res.consensus)logAdd(MTG_KIND[k].title+': 합의 '+JSON.stringify(res.consensus),'sys');
+  if(res.consensus&&k==='eve'&&res.consensus.pairs){G.pairs=G.pairs||{};res.consensus.pairs.forEach(([a,b])=>{G.pairs[a]=b;G.pairs[b]=a;});}
+  if(res.consensus&&k==='rep'&&res.consensus.ask){reporterAsk(res.consensus.ask);}
+  else if(res.consensus)logAdd(MTG_KIND[k].title+': 합의 '+JSON.stringify(res.consensus),'sys');
  }
 };
 
@@ -1953,8 +1999,9 @@ STEPS.attack={
   let top='';
   if(G.D.article)top+=`<div class="card news"><small>오늘의 기사</small><p>${esc(G.D.article)}</p></div>`;
   else if(G.reporter===0)top+=`<div class="card"><h3>기자 취재</h3><div class="row"><select id="rp_who">${aliveList().filter(r=>!r.me).map(r=>`<option value="${r.id}">${esc(r.nick)}</option>`).join('')}</select><select id="rp_ax">${AX.map(a=>`<option value="${a.k}">${a.name}</option>`).join('')}</select></div>${btn('rep-article','기사 쓰기','primary')}</div>`;
+  if(G.D.checkNotice&&!isMeImpure())top+=`<div class="card news"><small>공지</small><p>${esc(G.D.checkNotice)}</p></div>`;
   if(isMeImpure()){
-    if(G.D.checked==null)top+=`<div class="card"><h3>불순분자의 눈</h3><p class="hint">하루 한 명의 코드를 확인할 수 있습니다. 정체를 입 밖에 내면 자격을 잃습니다.</p><div class="chips tg">${aliveList().filter(r=>!r.me).map(r=>`<button class="tchip" data-act="imp-check" data-a="${r.id}">${esc(r.nick)}</button>`).join('')}</div></div>`;
+    if(G.D.checked==null)top+=`<div class="card"><h3>불순분자의 눈</h3><p class="hint">하루 한 명의 전체 코드를 확인할 수 있습니다. 확인했다는 사실만 모두에게 공지되고, 대상은 공개되지 않습니다. 정체를 입 밖에 내면 자격을 잃습니다.</p><div class="chips tg">${aliveList().filter(r=>!r.me).map(r=>`<button class="tchip" data-act="imp-check" data-a="${r.id}">${esc(r.nick)}</button>`).join('')}</div></div>`;
     else top+=`<div class="card"><small>오늘 확인한 코드</small><p><b>${esc(byId(G.D.checked).nick)}</b> — ${codeLabel(byId(G.D.checked).code)}</p></div>`;
   }
   if(G.D.newImpure&&!G.D.newImpureShown){top+=`<div class="card"><p class="err">불순분자가 퇴소했습니다. 당신이 새 불순분자로 지목됐습니다.</p></div>`;G.D.newImpureShown=true;}
@@ -2238,7 +2285,7 @@ function mtgStep(kind,skipIf){
     if(skipIf&&skipIf()){return `${head('mt_'+kind,MTG_KIND[kind].title)}<div class="card"><p class="lead">회의할 안건이 없습니다.</p></div>${nextBtn()}`;}
     return sceneView('meeting',S=>{
       const cs=G.D.cons&&G.D.cons[kind];
-      const csTxt=cs?(kind==='levy'?`징수율 ${cs.rate}%`:kind==='prize'?`배분 방식: ${{equal:'균등',solver:'풀이조 우대',free:'리더 재량'}[cs.mode]}`:kind==='shop'?`구입: ${cs.buy.map(i=>SHOP.find(s=>s.id===i).name).join(', ')}`:''):'';
+      const csTxt=cs?(kind==='levy'?`징수율 ${cs.rate}%`:kind==='prize'?`배분 방식: ${{equal:'균등',solver:'풀이조 우대',free:'리더 재량'}[cs.mode]}`:kind==='shop'?`구입: ${cs.buy.map(i=>SHOP.find(s=>s.id===i).name).join(', ')}`:kind==='rep'?`기자 질문 ${(cs.ask||[]).length}개 취재 완료`:kind==='eve'?(cs.truce?'오늘 밤 공격 자제':''):''):'';
       return `<div class="card">${csTxt?`<p class="lead">회의 결론 — ${esc(csTxt)}</p><p class="hint">리더가 이 결론을 따를지는 리더의 성격에 달려 있습니다.</p>`:`<p class="lead">이번 회의에서는 합의에 이르지 못했습니다.</p>`}
         <div class="row">${btn('mtg-more','회의 이어가기','ghost')}${btn('next','회의 마치기 →','primary')}</div><p class="hint">${G.S.round}번째 발언 · 회의는 끝없이 이어갈 수 있어요.</p></div>`;
     },{def:{rate:20,mode:'equal',want:'hint'}});
@@ -2250,6 +2297,7 @@ STEPS.mt_levy=mtgStep('levy');
 STEPS.mt_shop=mtgStep('shop');
 STEPS.mt_prize=mtgStep('prize',()=>!(G.D.prize>0));
 STEPS.mt_eve=mtgStep('eve');
+STEPS.mt_rep=mtgStep('rep',()=>G.reporter==null||!byId(G.reporter).alive);
 STEPS.mt_night=mtgStep('night');
 ACT['mtg-more']=()=>{const S=G.S;S.phase='input';S.round++;S.inp={rate:20,mode:'equal',want:'hint'};S.res=null;save();render();};
 
