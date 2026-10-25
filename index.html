@@ -1335,10 +1335,11 @@ SC.meeting={
       const m=String(c.mode||'').toLowerCase();const o={};
       if(['equal','solver','free'].includes(m))o.mode=m;
       if(c.alloc&&typeof c.alloc==='object'){
-        const al={pub:0};let sum=0;
-        Object.entries(c.alloc).forEach(([nm,v])=>{const x=Math.max(0,Math.round((+v||0)/10)*10);
-          if(nm==='공금'||nm==='pub'){al.pub=x;sum+=x;}else{const id=nickId(nm);if(id!=null&&byId(id).alive){al[id]=x;sum+=x;}}});
-        if(sum===(G.D.prize||0)){o.alloc=al;o.mode=o.mode||'free';}
+        const al={pub:0};let sum=0;const tot=G.D.prize||0;
+        Object.entries(c.alloc).forEach(([nm,v])=>{const x=Math.max(0,Math.floor((+v||0)/10)*10);
+          if(nm==='공금'||nm==='pub')return;const id=nickId(nm);if(id!=null&&byId(id).alive){al[id]=x;sum+=x;}});
+        // 상금이 10 단위가 아니어도(예: 2625) 남는 금액은 전부 공금으로 적립
+        if(sum<=tot){al.pub=tot-sum;o.alloc=al;o.mode=o.mode||'free';}
       }
       if(o.mode||o.alloc)cons=o;
     }
