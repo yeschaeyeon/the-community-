@@ -318,7 +318,7 @@ const aliveList=()=>G.R.filter(r=>r.alive);
 const npcAlive=()=>G.R.filter(r=>r.alive&&!r.me);
 const isMeImpure=()=>G.impure===0&&me().alive;
 const isMeLeader=()=>G.leader===0;
-function logAdd(text,tag){G.logs.push({d:G.day,t:text,k:tag||''});if(G.logs.length>400)G.logs.shift();}
+function logAdd(text,tag){(G.rec=G.rec||[]).push({d:G.day,k:'sys',t:text,tag:tag||''});G.logs.push({d:G.day,t:text,k:tag||''});if(G.logs.length>400)G.logs.shift();}
 function fav(i,j){return G.favor[i][j];}
 function adjFav(i,j,d){if(i===j)return;G.favor[i][j]=clamp(G.favor[i][j]+d,0,100);}
 function multFor(day){return day<=2?1:day===3?1.5:2;}
@@ -1743,6 +1743,7 @@ function readFields(){
 function applyScene(res){
   const S=G.S,sc=SC[S.key];
   sc.apply(res,S.inp);S.res=res;S.phase='done';S.err='';
+  try{const af=scFields(sc).find(f=>f.type==='area');(G.rec=G.rec||[]).push({d:G.day,k:'scene',title:(typeof sc.title==='string'?sc.title:String(sc.title||S.key)),mine:af&&S.inp[af.id]?S.inp[af.id]:'',log:(res.log||[]).map(l=>({who:l.who,text:l.text})),summary:res.summary||''});}catch(e){}
   save();render();
 }
 ACT['scene-build']=()=>{
@@ -2541,9 +2542,27 @@ STEPS.ending={
    <div class="card"><div class="between"><div><small>내 순위</small><p class="big">${m.alive?myRank+'위':'퇴소'}</p></div><div><small>내 자금</small><p class="big">${fm(m.money)}</p></div><div><small>불순분자</small><p class="big">${esc(imp.nick)}${imp.me?' (나)':''}</p></div></div></div>
    <div class="card"><h3>최종 순위</h3>${rk.map((r,i)=>`<div class="rank ${r.me?'me':''}"><span>${r.alive?i+1:'—'}</span><b>${esc(r.nick)}${r.imm?' <em>이주민</em>':''}</b><span class="cd">${codeStr(r.code)}</span><span>${r.alive?fm(r.money):'퇴소 '+r.exit.day+'일차'}</span></div>`).join('')}</div>
    <div class="card"><h3>내 기록</h3><p class="hint">푼 문제 ${G.stats.solved}개 · 토론 ${G.stats.wins}승 ${G.stats.loses}패 · MVP ${G.stats.mvp}회 · 공격 시도 ${G.stats.attacks}회(실패 ${G.stats.fails}회)</p></div>
-   <div class="row end">${btn('restart','처음부터 다시','ghost')}</div>`;
+   <div class="row end">${btn('dl-rec','게임 기록 다운로드','primary')}${btn('restart','처음부터 다시','ghost')}</div>`;
  },
  auto:()=>{}
+};
+function recordText(){
+  const rk=ranking(),imp=byId(G.impure),L=[];
+  L.push('# 사상검증구역 : 더 커뮤니티 · 시즌1 게임 기록','');
+  L.push('플레이어: '+G.nick+' (코드 '+codeStr(me().code)+')','불순분자: '+imp.nick+(imp.me?' (나)':''),'');
+  L.push('## 최종 순위');
+  rk.forEach((r,i)=>L.push((r.alive?(i+1)+'위':'퇴소')+' · '+r.nick+(r.imm?' (이주민)':'')+' · '+codeStr(r.code)+' · '+(r.alive?fm(r.money):'퇴소 '+r.exit.day+'일차')));
+  L.push('','푼 문제 '+G.stats.solved+'개 · 토론 '+G.stats.wins+'승 '+G.stats.loses+'패 · MVP '+G.stats.mvp+'회 · 공격 시도 '+G.stats.attacks+'회(실패 '+G.stats.fails+'회)','');
+  let d=0;
+  (G.rec||[]).forEach(e=>{
+    if(e.d!==d){d=e.d;L.push('','# '+d+'일차','');}
+    if(e.k==='sys')L.push('· '+e.t);
+    else{L.push('','## '+e.title);if(e.mine)L.push('['+G.nick+'] '+e.mine);e.log.forEach(l=>L.push('['+l.who+'] '+l.text));if(e.summary)L.push('(요약) '+e.summary);L.push('');}
+  });
+  return L.join('\n');
+}
+ACT['dl-rec']=()=>{
+  try{const b=new Blob([recordText()],{type:'text/plain;charset=utf-8'});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='더커뮤니티_게임기록.txt';document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},500);}catch(e){alert('다운로드에 실패했어요.');}
 };
 ACT.restart=()=>{clearSave();G=null;UI.tab='now';render();};
 
