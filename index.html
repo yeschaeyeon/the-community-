@@ -1094,7 +1094,7 @@ SC.debate={
   labs.forEach(l=>{const t=String((j.teams||{})[l]||'').toUpperCase();if(t!=='A'&&t!=='B')throw new Error(`teams에 ${l}의 팀이 빠졌어요.`);teams[l]=t;});
   if(d.meLabel&&teams[d.meLabel]!==inp.side)throw new Error('플레이어의 팀이 선택한 입장과 달라요. 다시 요청해 주세요.');
   const w=String(j.winner||'').toUpperCase();if(w!=='A'&&w!=='B')throw new Error('winner는 A 또는 B여야 해요.');
-  const mvp=String(j.mvp||'');if(!d.labels[mvp])throw new Error('mvp가 올바른 익명 닉네임이 아니에요.');
+  const mvp=String(j.mvp||'');if(!(mvp in d.labels))throw new Error('mvp가 올바른 익명 닉네임이 아니에요.');
   return{teams,log:parseLog(j.log),winner:w,mvp,reason:String(j.reason||'').slice(0,200)};
  },
  auto:inp=>{
